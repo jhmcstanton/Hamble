@@ -71,25 +71,25 @@ handleConn textChan voiceChan tClient vClient id = do
   sendText $ newUserMsg name
       
   txtReader <- forkIO $ fix (\loop -> chanListener id listenTChan tClient >> loop)
-  --vListener <- forkIO $ fix (\loop -> chanListener id listenVChan vClient >> loop)
+  vListener <- forkIO $ fix (\loop -> chanListener id listenVChan vClient >> loop)
   putStrLn "passed readers"
   threadDelay 2000
     
---  vWriter   <- forkIO $ fix $ \loop -> do
-  --  msg <- recv vClient maxRecv
-  --  sendVoice msg
-  --  loop
-
-  forkIO $ fix $ \loop -> do
+  vWriter   <- forkIO $ fix $ \loop -> do
+    msg <- recv vClient maxRecv
+    sendVoice msg
+    loop
+  
+  fix $ \loop -> do
     msg <- recv tClient maxRecv
     case words (BC.unpack msg) of
       ("/quit":_) -> return ()           
       _           -> sendText (append msgPrefix msg) >> loop
-
---  killThread vWriter
+  
+  killThread vWriter
   killThread txtReader
---  killThread vListener
-  close vClient
+  killThread vListener
+--  close vClient
   close tClient
 
 newUserMsg :: ByteString -> ByteString
