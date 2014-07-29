@@ -15,6 +15,9 @@ build-type:          Simple
 cabal-version:       >=1.8
 
 executable Hamble-Client
-  -- main-is:             
-  -- other-modules:       
-  build-depends:       base ==4.6.*
+  main-is:             Main.hs             
+  hs-source-dirs:      src
+  -- other-modules:          
+  build-depends:       base ==4.6.*,
+                       network,
+                       bytestring
