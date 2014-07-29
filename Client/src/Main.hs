@@ -24,11 +24,11 @@ main = withSocketsDo $ do
       textSock   <- socket AF_INET Stream   0 
   
       connect textSock (addrAddress tInfo)
---      connect voiceSock (addrAddress vInfo)
+      connect voiceSock (addrAddress vInfo)
 
-  --    voiceThread <- forkIO $ handleVoice voiceSock
+      voiceThread <- forkIO $ handleVoice voiceSock
       handleText textSock 
-  --    killThread voiceThread 
+      killThread voiceThread 
       close voiceSock 
       close textSock
       putStrLn "Closing Hamble"
@@ -39,10 +39,11 @@ handleVoice sock = return ()
 
 handleText :: Socket -> IO ()
 handleText sock = do
-  reader  <- forkIO $ fix (\loop -> recv sock textPort >>= BC.putStr >> loop)
+  reader  <- forkIO $ fix (\loop -> recv sock textPort >>= BC.putStrLn >> loop)
   fix (\loop -> do
     msg <- getLine
     case words msg of
-      ("/quit":_) -> return ()
+      ("/quit":_) -> send sock (BC.pack msg) >> return ()
       _           -> send sock (BC.pack msg) >> loop)
+  putStrLn "ASDASD"
   killThread reader

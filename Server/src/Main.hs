@@ -10,8 +10,9 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Monad.Fix
 import Control.Monad
---module Main (main) where
+import Data.List(delete)
 
+--module Main (main) where
 
 maxClients  = 20
 maxRecv     = 4092
@@ -24,7 +25,8 @@ main :: IO ()
 main = withSocketsDo $ do
   voiceChan <- newChan
   textChan  <- newChan 
-  ids       <- newChan -- pool of ids available to chat users
+  ids       <- newChan -- pool of ids available to chat users, server side only
+  aliases   <- newMVar [] 
   writeList2Chan ids [1..maxClients]
   
   voiceSock <- socket AF_INET Datagram 0
@@ -43,22 +45,22 @@ main = withSocketsDo $ do
   listen textSock maxClients
   putStrLn "Listening"
   
-  forkIO $ listenLoop textSock voiceSock textChan voiceChan ids
+  forkIO $ listenLoop textSock voiceSock textChan voiceChan ids aliases
   
   fix (\loop -> readChan textChan >>= BC.putStrLn . snd >> loop)
     
-listenLoop :: Socket -> Socket -> Chan Msg -> Chan Msg -> Chan Int -> IO ()
-listenLoop textSock voiceSock textChan voiceChan ids = do
+listenLoop :: Socket -> Socket -> Chan Msg -> Chan Msg -> Chan Int -> MVar [ByteString] -> IO ()
+listenLoop textSock voiceSock textChan voiceChan ids aliases = do
   (textClient, _)   <- accept textSock
 --  (voiceClient, _)  <- accept voiceSock -- this may not be the right way to do this
   -- might be better to send an id to "authenticate" that both requests are the same ^^       
   clientID <- readChan ids
   putStrLn $ "Connected client " ++ show clientID ++ " to text and voice"
-  forkFinally (handleConn textChan voiceChan textClient voiceSock clientID) (\_ -> writeChan ids clientID)
-  listenLoop textSock voiceSock textChan voiceChan ids
+  forkFinally (handleConn textChan voiceChan textClient voiceSock clientID aliases) (\_ -> writeChan ids clientID)
+  listenLoop textSock voiceSock textChan voiceChan ids aliases
 
-handleConn :: Chan Msg -> Chan Msg -> Socket -> Socket -> Int -> IO ()
-handleConn textChan voiceChan tClient vClient id = do
+handleConn :: Chan Msg -> Chan Msg -> Socket -> Socket -> Int -> MVar [ByteString] -> IO ()
+handleConn textChan voiceChan tClient vClient id aliases = do
   let sendText msg  = writeChan textChan (id, msg)
   let sendVoice msg = writeChan voiceChan (id, msg)  
   listenTChan       <- dupChan textChan
@@ -66,14 +68,16 @@ handleConn textChan voiceChan tClient vClient id = do
         
   send tClient $ BC.pack "Welcome! Who are you?"
   name <- recv tClient maxRecv
-  let msgPrefix = BC.pack $ BC.unpack name ++ ":"
+  let msgPrefix = BC.pack $ BC.unpack name ++ ":> "
 
   sendText $ newUserMsg name
-      
+  group <- takeMVar aliases
+  send tClient $ BC.pack "In the pen: "
+  send tClient $ BC.concat group
+  putMVar aliases (name : group)
+     
   txtReader <- forkIO $ fix (\loop -> chanListener id listenTChan tClient >> loop)
   vListener <- forkIO $ fix (\loop -> chanListener id listenVChan vClient >> loop)
-  putStrLn "passed readers"
-  threadDelay 2000
     
   vWriter   <- forkIO $ fix $ \loop -> do
     msg <- recv vClient maxRecv
@@ -83,13 +87,20 @@ handleConn textChan voiceChan tClient vClient id = do
   fix $ \loop -> do
     msg <- recv tClient maxRecv
     case words (BC.unpack msg) of
-      ("/quit":_) -> return ()           
+      ("/quit":_) -> return ()
+      ("/list":_) -> do
+                     group <- takeMVar aliases 
+                     send tClient $ BC.intercalate (BC.pack "\n") group
+                     putMVar aliases group
+                     loop           
       _           -> sendText (append msgPrefix msg) >> loop
   
+  sendText $ BC.concat [name, BC.pack " has left the pen"]
+  group <- takeMVar aliases
+  putMVar aliases $ delete name group
   killThread vWriter
   killThread txtReader
   killThread vListener
---  close vClient
   close tClient
 
 newUserMsg :: ByteString -> ByteString
