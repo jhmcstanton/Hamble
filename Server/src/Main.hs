@@ -39,4 +39,4 @@ main = withSocketsDo $ do
   forkIO $ listenLoop textSock voiceSock textChan voiceChan ids aliases
   
   fix (\loop -> readChan textChan >>= BC.putStrLn . snd >> loop)
-    
+  

@@ -20,7 +20,7 @@ type Msg =  (Int, ByteString)
 listenLoop :: Socket -> Socket -> Chan Msg -> Chan Msg -> Chan Int -> MVar [ByteString] -> IO ()
 listenLoop textSock voiceSock textChan voiceChan ids aliases = do
   (textClient, _)   <- accept textSock
---  (voiceClient, _)  <- accept voiceSock -- this may not be the right way to do this
+  --(voiceClient, _)  <- accept voiceSock -- this may not be the right way to do this
   -- might be better to send an id to "authenticate" that both requests are the same ^^       
   clientID <- readChan ids
   putStrLn $ "Connected client " ++ show clientID ++ " to text and voice"
@@ -38,6 +38,11 @@ handleConn textChan voiceChan tClient vClient id aliases = do
   name <- recv tClient maxRecv
   let msgPrefix = BC.pack $ BC.unpack name ++ ":> "
 
+  if BC.unpack name == "/quit"
+  then do
+    close tClient
+    close vClient
+  else do
   sendText $ newUserMsg name
   group <- takeMVar aliases
   send tClient $ BC.pack "In the pen: "
@@ -45,7 +50,7 @@ handleConn textChan voiceChan tClient vClient id aliases = do
   putMVar aliases (name : group)
      
   txtReader <- forkIO $ fix (\loop -> chanListener id listenTChan tClient >> loop)
-  vListener <- forkIO $ fix (\loop -> chanListener id listenVChan vClient >> loop)
+  vListener <- forkIO $ fix (\loop -> chanListener id listenVChan vClient >> putStrLn "Heard something" >> loop)
     
   vWriter   <- forkIO $ fix $ \loop -> do
     msg <- recv vClient maxRecv
@@ -70,6 +75,7 @@ handleConn textChan voiceChan tClient vClient id aliases = do
   killThread txtReader
   killThread vListener
   close tClient
+  close vClient
 
 newUserMsg :: ByteString -> ByteString
 newUserMsg name = BC.pack $ "( ^(0 0)^ ) " ++ BC.unpack name ++ " is in the pen."
