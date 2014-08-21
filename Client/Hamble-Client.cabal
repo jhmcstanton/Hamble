@@ -20,4 +20,7 @@ executable Hamble-Client
   -- other-modules:          
   build-depends:       base ==4.6.*,
                        network,
-                       bytestring
+                       bytestring,
+                       gstreamer,
+                       glib
+  ghc-options:         -threaded
